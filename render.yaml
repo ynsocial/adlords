@@ -1,19 +1,22 @@
 services:
   - type: web
-    name: adlords-api
+    name: travel-health-api
     env: node
-    buildCommand: cd server && npm install --production=false && npm run build
-    startCommand: cd server && npm start
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 8000
       - key: MONGODB_URI
-        sync: false
+        value: mongodb+srv://ynsocial:Graf2021@cluster0.wb86x.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
       - key: JWT_SECRET
-        sync: false
+        value: adlords-jwt-secret-2024
       - key: JWT_EXPIRY
         value: 24h
       - key: CORS_ORIGIN
         value: https://adlords.netlify.app
+    healthCheckPath: /api/health
+    autoDeploy: true
