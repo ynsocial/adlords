@@ -3,6 +3,7 @@ import 'winston-daily-rotate-file';
 import * as Sentry from '@sentry/node';
 import path from 'path';
 import { Request } from 'express';
+import { TransportStream } from 'winston-transport';
 
 // Initialize Sentry
 if (process.env.NODE_ENV === 'production') {
@@ -42,24 +43,20 @@ const colors = {
 // Add colors to Winston
 winston.addColors(colors);
 
-// Custom log format
-const logFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
-  winston.format.metadata({ fillExcept: ['message', 'level', 'timestamp'] }),
-  winston.format.printf(({ timestamp, level, message, metadata }) => {
-    let msg = `${timestamp} [${level.toUpperCase()}]: ${message}`;
-    if (Object.keys(metadata).length > 0) {
-      msg += ` ${JSON.stringify(metadata)}`;
-    }
-    return msg;
-  })
-);
+const { combine, timestamp, printf, colorize } = winston.format;
 
-// Console format with colors
-const consoleFormat = winston.format.combine(
-  winston.format.colorize({ all: true }),
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
-  winston.format.printf(({ timestamp, level, message }) => {
+const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
+  let msg = `${timestamp} [${level}] : ${message} `;
+  if (Object.keys(metadata).length > 0) {
+    msg += JSON.stringify(metadata);
+  }
+  return msg;
+});
+
+const consoleFormat = combine(
+  colorize(),
+  timestamp(),
+  printf(({ timestamp, level, message }) => {
     return `${timestamp} [${level}]: ${message}`;
   })
 );
@@ -67,27 +64,8 @@ const consoleFormat = winston.format.combine(
 // Define log directory
 const logDir = path.join(process.cwd(), 'logs');
 
-// Create rotating file transports
-const errorRotateTransport = new winston.transports.DailyRotateFile({
-  filename: path.join(logDir, 'error-%DATE%.log'),
-  datePattern: 'YYYY-MM-DD',
-  zippedArchive: true,
-  maxSize: '20m',
-  maxFiles: '14d',
-  level: 'error',
-});
-
-const combinedRotateTransport = new winston.transports.DailyRotateFile({
-  filename: path.join(logDir, 'combined-%DATE%.log'),
-  datePattern: 'YYYY-MM-DD',
-  zippedArchive: true,
-  maxSize: '20m',
-  maxFiles: '14d',
-});
-
-// Create Sentry transport
-class SentryTransport extends winston.Transport {
-  constructor(opts?: winston.transport) {
+class SentryTransport extends TransportStream {
+  constructor(opts?: any) {
     super(opts);
   }
 
@@ -98,13 +76,13 @@ class SentryTransport extends winston.Transport {
       Sentry.captureEvent({
         message,
         level: Sentry.Severity.Error,
-        extra: meta,
+        extra: meta
       });
     } else if (level === 'warn') {
       Sentry.captureEvent({
         message,
         level: Sentry.Severity.Warning,
-        extra: meta,
+        extra: meta
       });
     }
 
@@ -119,10 +97,24 @@ const Logger = winston.createLogger({
   format: logFormat,
   transports: [
     // Write all logs with level 'error' and below to error.log
-    errorRotateTransport,
+    new winston.transports.DailyRotateFile({
+      filename: path.join(logDir, 'error-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '20m',
+      maxFiles: '14d',
+      level: 'error'
+    }),
     // Write all logs with level 'info' and below to combined.log
-    combinedRotateTransport,
+    new winston.transports.DailyRotateFile({
+      filename: path.join(logDir, 'combined-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '20m',
+      maxFiles: '14d'
+    }),
   ],
+  exitOnError: false
 });
 
 // Add console transport in development

@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { UnauthorizedError } from '../utils/errors';
+import { verifyToken } from '../utils/jwt';
+import { AuthenticatedRequest } from '../types';
 import { User, IUser } from '../models/User';
 
 interface AuthRequest extends Request {
@@ -14,25 +16,20 @@ export const generateToken = (user: IUser): string => {
   );
 };
 
-export const auth = async (req: AuthRequest, res: Response, next: NextFunction) => {
+export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-
+    const token = req.headers.authorization?.split(' ')[1];
+    
     if (!token) {
-      throw new Error();
+      throw new UnauthorizedError('No token provided');
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
-    const user = await User.findById(decoded.id);
-
-    if (!user) {
-      throw new Error();
-    }
-
-    req.user = user;
+    const decoded = verifyToken(token);
+    (req as AuthenticatedRequest).user = decoded;
+    
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Please authenticate.' });
+    next(new UnauthorizedError('Invalid token'));
   }
 };
 
