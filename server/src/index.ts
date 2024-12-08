@@ -51,9 +51,33 @@ app.use(limiter);
 app.use('/api/auth', authRoutes);
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI!)
-  .then(() => console.log('Connected to MongoDB Atlas'))
-  .catch((err) => console.error('MongoDB connection error:', err));
+mongoose.connect(process.env.MONGODB_URI!, {
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+})
+.then(() => {
+  console.log('Connected to MongoDB Atlas');
+  
+  // Create indexes for collections
+  const db = mongoose.connection;
+  Promise.all([
+    db.collection('users').createIndex({ email: 1 }, { unique: true }),
+    db.collection('companies').createIndex({ name: 1 }),
+    db.collection('ambassadors').createIndex({ email: 1 }, { unique: true }),
+    db.collection('jobs').createIndex({ status: 1, createdAt: -1 }),
+    db.collection('applications').createIndex({ jobId: 1, ambassadorId: 1 }),
+    db.collection('tasks').createIndex({ applicationId: 1, status: 1 }),
+    db.collection('notifications').createIndex({ userId: 1, read: 1, createdAt: -1 })
+  ]).then(() => {
+    console.log('Database indexes created successfully');
+  }).catch(err => {
+    console.error('Error creating database indexes:', err);
+  });
+})
+.catch((err) => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
+});
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
