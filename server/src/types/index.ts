@@ -222,3 +222,42 @@ export interface ITask {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface EmailTemplate {
+  subject: string;
+  text: string;
+  html: string;
+}
+
+export interface EmailData {
+  to: string;
+  from: string;
+  subject: string;
+  text: string;
+  html: string;
+}
+
+export interface CompanyStatus {
+  ACTIVE: 'Active';
+  INACTIVE: 'Inactive';
+  SUSPENDED: 'Suspended';
+}
+
+export interface JobStatus {
+  DRAFT: 'Draft';
+  PENDING: 'Pending';
+  ACTIVE: 'Active';
+  PAUSED: 'Paused';
+  CANCELLED: 'Cancelled';
+  COMPLETED: 'Completed';
+}
+
+export interface NotificationType {
+  JOB_APPLICATION: 'job_application';
+  APPLICATION_STATUS: 'application_status';
+  COMPANY_STATUS: 'company_status';
+  JOB_STATUS: 'job_status';
+}
+
+export * from './interfaces';
+export * from './enums';
