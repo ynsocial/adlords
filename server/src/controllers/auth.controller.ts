@@ -2,6 +2,9 @@ import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
 import { logger } from '../config/logger';
+import crypto from 'crypto';
+import bcrypt from 'bcrypt';
+import emailService from '../services/emailService';
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -160,6 +163,89 @@ export const updateProfile = async (req: Request, res: Response) => {
     res.status(500).json({
       status: 'error',
       message: 'Error updating profile'
+    });
+  }
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hash = await bcrypt.hash(resetToken, 10);
+
+    // Save reset token to user
+    user.resetPasswordToken = hash;
+    user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
+    await user.save();
+
+    // Send reset email
+    await emailService.sendPasswordResetEmail(
+      user.email,
+      resetToken,
+      user.firstName
+    );
+
+    res.status(200).json({
+      message: 'Password reset email sent',
+    });
+  } catch (error) {
+    logger.error('Error in forgotPassword:', error);
+    res.status(500).json({
+      message: 'Error sending password reset email',
+    });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    // Find user with valid reset token
+    const user = await User.findOne({
+      resetPasswordToken: { $exists: true },
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message: 'Password reset token is invalid or has expired',
+      });
+    }
+
+    // Verify reset token
+    const isValidToken = await bcrypt.compare(token, user.resetPasswordToken);
+    if (!isValidToken) {
+      return res.status(400).json({
+        message: 'Invalid reset token',
+      });
+    }
+
+    // Update password and clear reset token
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    // Send confirmation email
+    await emailService.sendPasswordChangeConfirmation(
+      user.email,
+      user.firstName
+    );
+
+    res.status(200).json({
+      message: 'Password has been reset successfully',
+    });
+  } catch (error) {
+    logger.error('Error in resetPassword:', error);
+    res.status(500).json({
+      message: 'Error resetting password',
     });
   }
 };

@@ -38,6 +38,8 @@ interface AuthContextType extends AuthState {
   register: (data: RegistrationData) => Promise<void>;
   logout: () => void;
   updateProfile: (data: { firstName?: string; lastName?: string }) => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (token: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -189,17 +191,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        ...state,
-        login,
-        register,
-        logout,
-        updateProfile,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  const forgotPassword = async (email: string) => {
+    try {
+      const response = await axios.post('/auth/forgot-password', { email });
+      return response.data;
+    } catch (error: any) {
+      setState(prev => ({
+        ...prev,
+        error: error.response?.data?.message || 'Failed to send reset email',
+      }));
+      throw error;
+    }
+  };
+
+  const resetPassword = async (token: string, newPassword: string) => {
+    try {
+      const response = await axios.post('/auth/reset-password', { token, newPassword });
+      return response.data;
+    } catch (error: any) {
+      setState(prev => ({
+        ...prev,
+        error: error.response?.data?.message || 'Failed to reset password',
+      }));
+      throw error;
+    }
+  };
+
+  const value = {
+    ...state,
+    login,
+    register,
+    logout,
+    updateProfile,
+    forgotPassword,
+    resetPassword,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
