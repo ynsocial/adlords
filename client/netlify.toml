@@ -1,21 +1,30 @@
 [build]
-  base = "client"
+  base = "client/"
+  publish = "dist/"
   command = "npm run build"
-  publish = "dist"
 
 [build.environment]
   NODE_VERSION = "18"
-  VITE_API_URL = "https://travel-health-api.onrender.com"
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-[dev]
-  command = "npm run dev"
-  port = 3000
-  targetPort = 8080
+[context.production.environment]
+  VITE_API_URL = "https://api.travel-health.com"
+  VITE_SOCKET_URL = "wss://api.travel-health.com"
+  VITE_ENVIRONMENT = "production"
+
+[context.staging.environment]
+  VITE_API_URL = "https://staging-api.travel-health.com"
+  VITE_SOCKET_URL = "wss://staging-api.travel-health.com"
+  VITE_ENVIRONMENT = "staging"
+
+[context.development.environment]
+  VITE_API_URL = "http://localhost:5000"
+  VITE_SOCKET_URL = "ws://localhost:5000"
+  VITE_ENVIRONMENT = "development"
 
 [[headers]]
   for = "/*"
@@ -24,4 +33,17 @@
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
-    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://travel-health-api.onrender.com; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+    Content-Security-Policy = "default-src 'self' *.travel-health.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' *.travel-health.com ws: wss:;"
+
+[build.processing]
+  skip_processing = false
+[build.processing.css]
+  bundle = true
+  minify = true
+[build.processing.js]
+  bundle = true
+  minify = true
+[build.processing.html]
+  pretty_urls = true
+[build.processing.images]
+  compress = true
