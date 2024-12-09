@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { AmbassadorService } from '../services/AmbassadorService';
 import { validateAmbassador } from '../validators/ambassadorValidator';
-import { AppError } from '../utils/errors';
+import { AppError, NotFoundError, BadRequestError } from '../utils/errors';
 import { asyncHandler } from '../utils/asyncHandler';
+import { IUser, IAmbassador } from '../types';
 
 export class AmbassadorController {
   // Create new ambassador
@@ -27,7 +28,7 @@ export class AmbassadorController {
       const ambassador = await AmbassadorService.getAmbassadorById(req.params.id);
       
       if (!ambassador) {
-        throw new AppError('Ambassador not found', 404);
+        throw new NotFoundError('Ambassador not found', 404);
       }
 
       res.status(200).json({
@@ -106,7 +107,7 @@ export class AmbassadorController {
       const { status } = req.body;
 
       if (!['Unverified', 'Pending', 'Verified', 'Rejected'].includes(status)) {
-        throw new AppError('Invalid verification status', 400);
+        throw new BadRequestError('Invalid verification status', 400);
       }
 
       const ambassador = await AmbassadorService.updateVerificationStatus(
@@ -127,7 +128,7 @@ export class AmbassadorController {
       const { rating } = req.body;
 
       if (typeof rating !== 'number' || rating < 0 || rating > 5) {
-        throw new AppError('Invalid rating value', 400);
+        throw new BadRequestError('Invalid rating value', 400);
       }
 
       const ambassador = await AmbassadorService.updateRating(
@@ -155,6 +156,112 @@ export class AmbassadorController {
       });
     }
   );
+
+  // Get ambassador profile
+  public static async getProfile(req: Request, res: Response): Promise<void> {
+    const userId = (req.user as IUser)._id;
+    const ambassador = await AmbassadorService.getAmbassadorByUserId(userId);
+
+    if (!ambassador) {
+      throw new NotFoundError('Ambassador profile not found');
+    }
+
+    res.json(ambassador);
+  }
+
+  // Update ambassador profile
+  public static async updateProfile(req: Request, res: Response): Promise<void> {
+    const userId = (req.user as IUser)._id;
+    const ambassador = await AmbassadorService.getAmbassadorByUserId(userId);
+
+    if (!ambassador) {
+      throw new NotFoundError('Ambassador profile not found');
+    }
+
+    const updates: Partial<IAmbassador> = {
+      firstName: req.body.firstName,
+      lastName: req.body.lastName,
+      bio: req.body.bio,
+      socialMedia: req.body.socialMedia,
+      experience: req.body.experience,
+      education: req.body.education,
+      skills: req.body.skills,
+      languages: req.body.languages,
+      certifications: req.body.certifications
+    };
+
+    const updatedAmbassador = await AmbassadorService.updateAmbassadorProfile(
+      ambassador._id,
+      updates
+    );
+
+    res.json(updatedAmbassador);
+  }
+
+  // Upload verification documents
+  public static async uploadVerificationDocuments(req: Request, res: Response): Promise<void> {
+    const userId = (req.user as IUser)._id;
+    const ambassador = await AmbassadorService.getAmbassadorByUserId(userId);
+
+    if (!ambassador) {
+      throw new NotFoundError('Ambassador profile not found');
+    }
+
+    if (!req.files || !Array.isArray(req.files)) {
+      throw new BadRequestError('No files uploaded');
+    }
+
+    const documents = req.files.map(file => ({
+      type: file.mimetype,
+      url: file.path,
+      status: 'Pending',
+      uploadedAt: new Date()
+    }));
+
+    ambassador.verificationDocuments = [
+      ...(ambassador.verificationDocuments || []),
+      ...documents
+    ];
+
+    await ambassador.save();
+    res.json(ambassador);
+  }
+
+  // Get verification status
+  public static async getVerificationStatus(req: Request, res: Response): Promise<void> {
+    const userId = (req.user as IUser)._id;
+    const ambassador = await AmbassadorService.getAmbassadorByUserId(userId);
+
+    if (!ambassador) {
+      throw new NotFoundError('Ambassador profile not found');
+    }
+
+    res.json({
+      status: ambassador.verificationStatus,
+      documents: ambassador.verificationDocuments
+    });
+  }
+
+  // Get statistics
+  public static async getStats(req: Request, res: Response): Promise<void> {
+    const userId = (req.user as IUser)._id;
+    const ambassador = await AmbassadorService.getAmbassadorByUserId(userId);
+
+    if (!ambassador) {
+      throw new NotFoundError('Ambassador profile not found');
+    }
+
+    // Implement statistics gathering logic here
+    const stats = {
+      totalApplications: 0,
+      acceptedApplications: 0,
+      rejectedApplications: 0,
+      pendingApplications: 0,
+      // Add more stats as needed
+    };
+
+    res.json(stats);
+  }
 }
 
 export default AmbassadorController;

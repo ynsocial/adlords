@@ -4,16 +4,39 @@ import { validateJob, validateJobFilters } from '../validators/jobValidator';
 import { AppError } from '../utils/errors';
 import { asyncHandler } from '../utils/asyncHandler';
 import { UserRole } from '../types';
+import { Job } from '../models/Job';
+import { Company } from '../models/Company';
+import { NotFoundError, BadRequestError, UnauthorizedError } from '../utils/errors';
+import { IUser, IJob } from '../types';
 
 export class JobController {
   // Create new job
   static createJob = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
-      const validatedData = await validateJob(req.body);
-      const job = await JobService.createJob({
-        ...validatedData,
-        companyId: req.user.companyId,
-      });
+      const user = req.user as IUser;
+      if (user.role !== UserRole.COMPANY) {
+        throw new UnauthorizedError('Only companies can create jobs');
+      }
+
+      const company = await Company.findOne({ userId: user._id });
+      if (!company) {
+        throw new NotFoundError('Company not found');
+      }
+
+      const jobData: Partial<IJob> = {
+        ...req.body,
+        companyId: company._id,
+        status: 'Draft',
+        metadata: {
+          views: 0,
+          applications: 0,
+          isHighlighted: false,
+          lastActivityAt: new Date()
+        }
+      };
+
+      const validatedData = await validateJob(jobData);
+      const job = await JobService.createJob(validatedData);
       
       res.status(201).json({
         success: true,
@@ -25,16 +48,15 @@ export class JobController {
   // Get job by ID
   static getJobById = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
-      const job = await JobService.getJobById(req.params.id);
-      
+      const { jobId } = req.params;
+      const job = await JobService.getJobById(jobId).populate('companyId', 'name logo');
+
       if (!job) {
-        throw new AppError('Job not found', 404);
+        throw new NotFoundError('Job not found');
       }
 
-      // Increment view count for public views
-      if (!req.user || req.user.role !== UserRole.ADMIN) {
-        await JobService.incrementViewCount(req.params.id);
-      }
+      // Increment view count
+      await JobService.incrementViewCount(jobId);
 
       res.status(200).json({
         success: true,
@@ -46,23 +68,37 @@ export class JobController {
   // Update job
   static updateJob = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
-      const validatedData = await validateJob(req.body, true);
-      
-      // Only allow status updates for admin
-      if (req.user.role !== UserRole.ADMIN) {
-        delete validatedData.status;
-        delete validatedData.moderationStatus;
+      const user = req.user as IUser;
+      const { jobId } = req.params;
+
+      const job = await JobService.getJobById(jobId);
+      if (!job) {
+        throw new NotFoundError('Job not found');
       }
 
-      const job = await JobService.updateJob(
-        req.params.id,
-        validatedData,
-        req.user.companyId
+      const company = await Company.findOne({ userId: user._id });
+      if (!company || !job.companyId.equals(company._id)) {
+        throw new UnauthorizedError('Not authorized to update this job');
+      }
+
+      const validatedData = await validateJob(req.body, true);
+      const updates: Partial<IJob> = {
+        ...validatedData,
+        metadata: {
+          ...job.metadata,
+          lastActivityAt: new Date()
+        }
+      };
+
+      const updatedJob = await JobService.updateJob(
+        jobId,
+        updates,
+        user.companyId
       );
 
       res.status(200).json({
         success: true,
-        data: job,
+        data: updatedJob,
       });
     }
   );
@@ -70,7 +106,20 @@ export class JobController {
   // Delete job
   static deleteJob = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
-      await JobService.deleteJob(req.params.id, req.user.companyId);
+      const user = req.user as IUser;
+      const { jobId } = req.params;
+
+      const job = await JobService.getJobById(jobId);
+      if (!job) {
+        throw new NotFoundError('Job not found');
+      }
+
+      const company = await Company.findOne({ userId: user._id });
+      if (!company || !job.companyId.equals(company._id)) {
+        throw new UnauthorizedError('Not authorized to delete this job');
+      }
+
+      await JobService.deleteJob(jobId, user.companyId);
 
       res.status(204).json({
         success: true,
@@ -82,7 +131,22 @@ export class JobController {
   // Get all jobs with filtering
   static getJobs = asyncHandler(
     async (req: Request, res: Response, next: NextFunction) => {
+      const {
+        status,
+        type,
+        category,
+        location,
+        page = 1,
+        limit = 10,
+        sort = '-createdAt'
+      } = req.query;
+
       const filters = await validateJobFilters(req.query);
+      const query: any = {};
+      if (status) query.status = status;
+      if (type) query.type = type;
+      if (category) query.category = category;
+      if (location) query['location.country'] = location;
 
       // For company users, only show their jobs
       if (req.user?.role === UserRole.COMPANY) {
@@ -94,7 +158,17 @@ export class JobController {
         filters.status = 'Active';
       }
 
-      const result = await JobService.getJobs(filters);
+      const options = {
+        page: Number(page),
+        limit: Number(limit),
+        sort,
+        populate: {
+          path: 'companyId',
+          select: 'name logo'
+        }
+      };
+
+      const result = await JobService.getJobs(filters, options);
 
       res.status(200).json({
         success: true,
@@ -114,7 +188,7 @@ export class JobController {
       const { q, ...filters } = req.query;
 
       if (!q || typeof q !== 'string') {
-        throw new AppError('Search query is required', 400);
+        throw new BadRequestError('Search query is required', 400);
       }
 
       const validatedFilters = await validateJobFilters(filters);
@@ -144,7 +218,7 @@ export class JobController {
       const { status, reason } = req.body;
 
       if (!['Pending', 'Approved', 'Rejected'].includes(status)) {
-        throw new AppError('Invalid moderation status', 400);
+        throw new BadRequestError('Invalid moderation status', 400);
       }
 
       const job = await JobService.updateModerationStatus(
@@ -167,7 +241,7 @@ export class JobController {
       const { status } = req.body;
 
       if (!['Draft', 'Pending', 'Paused', 'Cancelled'].includes(status)) {
-        throw new AppError('Invalid status', 400);
+        throw new BadRequestError('Invalid status', 400);
       }
 
       const job = await JobService.updateJobStatus(
@@ -192,6 +266,7 @@ export class JobController {
         req.params.id,
         {
           'metadata.isHighlighted': highlight,
+          'metadata.lastActivityAt': new Date()
         },
         req.user.companyId
       );

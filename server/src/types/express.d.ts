@@ -1,16 +1,12 @@
-import { Request } from 'express';
+import { Request as ExpressRequest } from 'express';
 import { IUser } from './index';
 
 declare global {
   namespace Express {
-    interface Request {
+    interface Request extends ExpressRequest {
       user?: IUser;
-      rateLimit?: {
-        limit: number;
-        current: number;
-        remaining: number;
-        resetTime: Date;
-      };
+      startTime?: number;
+      requestId?: string;
     }
   }
 }
