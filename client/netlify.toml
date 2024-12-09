@@ -5,15 +5,15 @@
 
 [build.environment]
   NODE_VERSION = "18"
+  VITE_API_URL = "https://travel-health-api.onrender.com"
+  VITE_SOCKET_URL = "wss://travel-health-api.onrender.com"
+  VITE_APP_NAME = "Adlords Travel Health"
+  VITE_APP_VERSION = "1.0.0"
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
-[dev]
-  framework = "vite"
-  targetPort = 5173
 
 [functions]
   directory = "netlify/functions"
