@@ -3,31 +3,48 @@ services:
     name: travel-health-api
     env: node
     rootDir: server
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     envVars:
+      # Server Configuration
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 8000
+      - key: LOG_LEVEL
+        value: info
+
+      # Database Configuration
       - key: MONGODB_URI
         sync: false
+
+      # Authentication
       - key: JWT_SECRET
         sync: false
       - key: JWT_EXPIRY
         value: 24h
+
+      # CORS and Security
       - key: CORS_ORIGIN
         value: https://adlords.netlify.app
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX
+        value: 100
+
+      # Redis Configuration
       - key: REDIS_URL
-        sync: false
-      - key: AWS_ACCESS_KEY_ID
-        sync: false
-      - key: AWS_SECRET_ACCESS_KEY
-        sync: false
-      - key: AWS_REGION
-        sync: false
+        fromService:
+          type: redis
+          name: travel-health-cache
+          property: connectionString
+
+      # Error Tracking
       - key: SENTRY_DSN
         sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+
     healthCheckPath: /api/health
     autoDeploy: true
 
@@ -35,3 +52,4 @@ services:
     name: travel-health-cache
     ipAllowList: []
     plan: free
+    maxmemoryPolicy: noeviction
