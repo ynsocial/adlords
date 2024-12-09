@@ -7,6 +7,8 @@ import {
   resetPassword,
   getProfile,
   updateProfile,
+  verifyEmail,
+  resendVerification,
 } from '../controllers/auth.controller';
 import { protect } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validate';
@@ -49,6 +51,11 @@ const updateProfileValidation = [
   body('lastName').notEmpty().withMessage('Last name is required'),
 ];
 
+// Email verification validation
+const resendVerificationValidation = [
+  body('email').isEmail().withMessage('Enter a valid email'),
+];
+
 // Routes
 router.post('/register', registerValidation, validateRequest, register);
 router.post('/login', loginValidation, validateRequest, login);
@@ -63,6 +70,13 @@ router.post(
   resetPasswordValidation,
   validateRequest,
   resetPassword
+);
+router.get('/verify-email/:token', verifyEmail);
+router.post(
+  '/resend-verification',
+  resendVerificationValidation,
+  validateRequest,
+  resendVerification
 );
 
 // Protected routes

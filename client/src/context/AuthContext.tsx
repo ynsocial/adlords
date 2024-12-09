@@ -40,6 +40,8 @@ interface AuthContextType extends AuthState {
   updateProfile: (data: { firstName?: string; lastName?: string }) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
+  verifyEmail: (token: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -217,14 +219,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const verifyEmail = async (token: string) => {
+    try {
+      const response = await axios.get(`${API_URL}/auth/verify-email/${token}`);
+      return response.data;
+    } catch (error: any) {
+      setState(prev => ({
+        ...prev,
+        error: error.response?.data?.message || 'Failed to verify email',
+      }));
+      throw error;
+    }
+  };
+
+  const resendVerification = async (email: string) => {
+    try {
+      const response = await axios.post(`${API_URL}/auth/resend-verification`, { email });
+      return response.data;
+    } catch (error: any) {
+      setState(prev => ({
+        ...prev,
+        error: error.response?.data?.message || 'Failed to resend verification email',
+      }));
+      throw error;
+    }
+  };
+
   const value = {
-    ...state,
+    user: state.user,
+    isAuthenticated: !!state.user,
     login,
     register,
     logout,
     updateProfile,
     forgotPassword,
     resetPassword,
+    verifyEmail,
+    resendVerification,
+    error: state.error,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -86,6 +86,83 @@ class EmailService {
       throw new Error('Failed to send password change confirmation email');
     }
   }
+
+  async sendVerificationEmail(
+    to: string,
+    verificationToken: string,
+    firstName: string
+  ): Promise<void> {
+    const verifyUrl = `${config.clientUrl}/verify-email/${verificationToken}`;
+
+    const mailOptions = {
+      from: `"Travel Health" <${config.email.from}>`,
+      to,
+      subject: 'Verify Your Email Address',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>Welcome to Travel Health, ${firstName}!</h2>
+          <p>Thank you for registering. Please verify your email address to complete your registration.</p>
+          <p>This link will expire in 24 hours.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${verifyUrl}" 
+               style="background-color: #4CAF50; color: white; padding: 12px 24px; 
+                      text-decoration: none; border-radius: 4px; display: inline-block;">
+              Verify Email Address
+            </a>
+          </div>
+          <p>If you didn't create an account with us, please ignore this email.</p>
+          <p>Best regards,<br>Travel Health Team</p>
+          <hr style="border: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #666; font-size: 12px;">
+            If the button doesn't work, copy and paste this link into your browser:<br>
+            ${verifyUrl}
+          </p>
+        </div>
+      `,
+    };
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+      logger.info(`Verification email sent to ${to}`);
+    } catch (error) {
+      logger.error('Error sending verification email:', error);
+      throw new Error('Failed to send verification email');
+    }
+  }
+
+  async sendVerificationSuccessEmail(
+    to: string,
+    firstName: string
+  ): Promise<void> {
+    const mailOptions = {
+      from: `"Travel Health" <${config.email.from}>`,
+      to,
+      subject: 'Email Verification Successful',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>Hello ${firstName},</h2>
+          <p>Your email has been successfully verified!</p>
+          <p>You can now access all features of Travel Health.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${config.clientUrl}/login" 
+               style="background-color: #4CAF50; color: white; padding: 12px 24px; 
+                      text-decoration: none; border-radius: 4px; display: inline-block;">
+              Login to Your Account
+            </a>
+          </div>
+          <p>Best regards,<br>Travel Health Team</p>
+        </div>
+      `,
+    };
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+      logger.info(`Verification success email sent to ${to}`);
+    } catch (error) {
+      logger.error('Error sending verification success email:', error);
+      throw new Error('Failed to send verification success email');
+    }
+  }
 }
 
 export const emailService = new EmailService();
