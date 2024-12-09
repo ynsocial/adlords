@@ -7,7 +7,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import { createClient } from 'redis';
-import authRoutes from './routes/auth';
+import authRoutes from './routes/auth.routes';
 import { logger } from './config/logger';
 
 dotenv.config();
@@ -69,7 +69,7 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Routes
+// API Routes
 app.use('/api/auth', authRoutes);
 
 // Global Error Handler
