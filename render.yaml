@@ -11,12 +11,27 @@ services:
       - key: PORT
         value: 8000
       - key: MONGODB_URI
-        value: mongodb+srv://ynsocial:Graf2021@cluster0.wb86x.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+        sync: false
       - key: JWT_SECRET
-        value: adlords-jwt-secret-2024
+        sync: false
       - key: JWT_EXPIRY
         value: 24h
       - key: CORS_ORIGIN
         value: https://adlords.netlify.app
+      - key: REDIS_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
     healthCheckPath: /api/health
     autoDeploy: true
+
+  - type: redis
+    name: travel-health-cache
+    ipAllowList: []
+    plan: free
