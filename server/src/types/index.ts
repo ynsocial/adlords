@@ -1,57 +1,88 @@
 import { Request } from 'express';
 import { ObjectId } from 'mongodb';
+import { Document } from 'mongoose';
 
-export interface IUser {
+export interface IUser extends Document {
   _id: ObjectId;
   email: string;
   password: string;
-  role: 'admin' | 'user' | 'company' | 'ambassador';
-  status: 'active' | 'inactive' | 'pending' | 'blocked';
-  createdAt: Date;
-  updatedAt: Date;
+  firstName: string;
+  lastName: string;
+  role: 'admin' | 'ambassador';
+  isActive: boolean;
+  lastLogin: Date;
+  comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
 export interface AuthenticatedRequest extends Request {
   user?: IUser;
 }
 
+export enum EmailTemplate {
+  COMPANY_REGISTRATION = 'company-registration',
+  COMPANY_APPROVAL = 'company-approval',
+  COMPANY_REJECTION = 'company-rejection',
+  JOB_POSTING_APPROVAL = 'job-posting-approval',
+  JOB_POSTING_REJECTION = 'job-posting-rejection',
+  APPLICATION_RECEIVED = 'application-received',
+  APPLICATION_STATUS_UPDATE = 'application-status-update',
+  VERIFICATION_CODE = 'verification-code',
+  PASSWORD_RESET = 'password-reset'
+}
+
+export interface EmailData {
+  [key: string]: any;
+}
+
+export interface IAttachment {
+  type: string;
+  url: string;
+  name: string;
+  size: number;
+  uploadedAt: Date;
+}
+
 export interface IJob {
   _id: ObjectId;
   companyId: ObjectId;
-  type: 'Full-time' | 'Part-time' | 'Contract' | 'One-time';
-  category: string[];
-  status: 'Draft' | 'Pending' | 'Active' | 'Paused' | 'Completed' | 'Cancelled' | 'Rejected';
   title: string;
   description: string;
+  shortDescription?: string;
   requirements: string[];
   responsibilities: string[];
-  qualifications: {
-    required: string[];
-    preferred: string[];
-  };
-  benefits: string[];
-  salary: {
-    min: number;
-    max: number;
-    currency: string;
-    period: 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
-  };
+  category: string[];
+  type: 'Full-time' | 'Part-time' | 'Contract' | 'One-time';
   location: {
-    type: 'remote' | 'onsite' | 'hybrid';
-    country?: string;
-    city?: string;
-    address?: string;
+    type: 'Remote' | 'On-site' | 'Hybrid';
+    cities?: string[];
+    countries?: string[];
   };
-  applicationDeadline: Date;
-  startDate: Date;
-  isAcceptingApplications: boolean;
-  maxApplications: number;
+  budget: {
+    range: {
+      min: number;
+      max: number;
+    };
+    currency: string;
+    type: 'Fixed' | 'Hourly' | 'Daily';
+    negotiable: boolean;
+  };
+  duration?: {
+    type: 'Fixed' | 'Ongoing';
+    startDate?: Date;
+    endDate?: Date;
+    estimatedMonths?: number;
+  };
+  skills: string[];
+  benefits?: string[];
+  status: 'Draft' | 'Pending' | 'Active' | 'Paused' | 'Cancelled' | 'Completed';
   metadata: {
     views: number;
     applications: number;
     isHighlighted: boolean;
     isUrgent: boolean;
   };
+  attachments?: IAttachment[];
+  maxApplications?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -94,9 +125,9 @@ export interface IApplication {
 export interface IAmbassador {
   _id: ObjectId;
   userId: ObjectId;
-  email: string;
   firstName: string;
   lastName: string;
+  email: string;
   bio: string;
   socialMedia: {
     twitter?: string;
@@ -223,41 +254,4 @@ export interface ITask {
   updatedAt: Date;
 }
 
-export interface EmailTemplate {
-  subject: string;
-  text: string;
-  html: string;
-}
-
-export interface EmailData {
-  to: string;
-  from: string;
-  subject: string;
-  text: string;
-  html: string;
-}
-
-export interface CompanyStatus {
-  ACTIVE: 'Active';
-  INACTIVE: 'Inactive';
-  SUSPENDED: 'Suspended';
-}
-
-export interface JobStatus {
-  DRAFT: 'Draft';
-  PENDING: 'Pending';
-  ACTIVE: 'Active';
-  PAUSED: 'Paused';
-  CANCELLED: 'Cancelled';
-  COMPLETED: 'Completed';
-}
-
-export interface NotificationType {
-  JOB_APPLICATION: 'job_application';
-  APPLICATION_STATUS: 'application_status';
-  COMPANY_STATUS: 'company_status';
-  JOB_STATUS: 'job_status';
-}
-
-export * from './interfaces';
 export * from './enums';

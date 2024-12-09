@@ -1,133 +1,94 @@
 import winston from 'winston';
+import 'winston-daily-rotate-file';
+import { Request } from 'express';
 import * as Sentry from '@sentry/node';
-import { Request, Response } from 'express';
-import { Environment } from '../types/enums';
-import path from 'path';
 
-const { createLogger, format, transports } = winston;
-const { combine, timestamp, printf, colorize } = format;
+const { combine, timestamp, printf, colorize } = winston.format;
 
-// Configure Sentry
-if (process.env.NODE_ENV === Environment.PRODUCTION) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV,
-    integrations: [
-      new Sentry.Integrations.Http({ tracing: true }),
-      new Sentry.Integrations.Express()
-    ],
-    tracesSampleRate: 1.0
-  });
-}
-
-// Custom format for Winston
-const customFormat = printf(({ level, message, timestamp, ...metadata }) => {
-  let msg = `${timestamp} [${level}]: ${message}`;
-  
-  if (Object.keys(metadata).length > 0) {
-    msg += ` ${JSON.stringify(metadata)}`;
+const myFormat = printf(({ level, message, timestamp, ...metadata }) => {
+  let msg = `${timestamp} [${level}] : ${message} `;
+  if (metadata && Object.keys(metadata).length > 0) {
+    msg += JSON.stringify(metadata);
   }
-  
   return msg;
 });
 
-// Create Winston logger
-const logger = createLogger({
-  format: combine(
-    timestamp(),
-    customFormat
-  ),
+const options = {
+  file: {
+    level: 'info',
+    filename: './logs/app-%DATE%.log',
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true,
+    maxSize: '20m',
+    maxFiles: '14d',
+    format: combine(timestamp(), myFormat),
+  },
+  error: {
+    level: 'error',
+    filename: './logs/error-%DATE%.log',
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true,
+    maxSize: '20m',
+    maxFiles: '14d',
+    format: combine(timestamp(), myFormat),
+  },
+  console: {
+    level: 'debug',
+    format: combine(colorize(), timestamp(), myFormat),
+  },
+};
+
+// Instantiate a new Winston Logger with the settings defined above
+const logger = winston.createLogger({
   transports: [
-    new transports.Console({
-      level: process.env.NODE_ENV === Environment.PRODUCTION ? 'info' : 'debug',
-      format: combine(
-        colorize(),
-        customFormat
-      )
-    }),
-    new transports.DailyRotateFile({
-      filename: path.join('logs', 'error-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      zippedArchive: true,
-      maxSize: '20m',
-      maxFiles: '14d',
-      level: 'error'
-    }),
-    new transports.DailyRotateFile({
-      filename: path.join('logs', 'combined-%DATE%.log'),
-      datePattern: 'YYYY-MM-DD',
-      zippedArchive: true,
-      maxSize: '20m',
-      maxFiles: '14d'
-    })
-  ]
+    new winston.transports.DailyRotateFile(options.file),
+    new winston.transports.DailyRotateFile(options.error),
+    new winston.transports.Console(options.console),
+  ],
+  exitOnError: false, // Do not exit on handled exceptions
 });
 
-// Log to Sentry for errors and warnings in production
-if (process.env.NODE_ENV === Environment.PRODUCTION) {
-  logger.on('error', (log) => {
-    Sentry.captureMessage(log.message, Sentry.Severity.ERROR);
-  });
-  logger.on('warn', (log) => {
-    Sentry.captureMessage(log.message, Sentry.Severity.WARNING);
-  });
-}
-
-export const logRequest = (req: Request) => {
-  const { method, path, body, query, params, ip, headers } = req;
-  logger.http(`${method} ${path}`, {
-    ip,
-    userAgent: headers['user-agent'],
-    query,
-    params,
-    body: process.env.NODE_ENV === Environment.DEVELOPMENT ? body : '[REDACTED]',
-  });
+// Create a stream object with a 'write' function that will be used by `morgan`
+const stream = {
+  write: (message: string) => {
+    logger.info(message.trim());
+  },
 };
 
-export const logError = (error: Error, req?: Request): void => {
-  const errorDetails = {
-    name: error.name,
-    message: error.message,
-    stack: error.stack,
-    ...(req && {
-      path: req.path,
-      method: req.method,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    }),
-  };
-
-  logger.error('Application error', errorDetails);
-
-  if (process.env.NODE_ENV === Environment.PRODUCTION) {
-    Sentry.captureException(error, {
-      extra: errorDetails,
+const logError = (error: Error, request?: Request) => {
+  if (process.env.NODE_ENV === 'production') {
+    Sentry.withScope((scope) => {
+      scope.setLevel('error');
+      if (request) {
+        scope.setExtra('url', request.url);
+        scope.setExtra('method', request.method);
+        scope.setExtra('headers', request.headers);
+        scope.setExtra('body', request.body);
+        scope.setExtra('query', request.query);
+        scope.setExtra('params', request.params);
+      }
+      Sentry.captureException(error);
     });
   }
+  logger.error(error.message, { error, request });
 };
 
-export const logPerformance = (
-  operation: string,
-  duration: number,
-  metadata?: object
-): void => {
-  logger.verbose(`Performance: ${operation} took ${duration}ms`, metadata);
+const logWarning = (message: string, request?: Request) => {
+  if (process.env.NODE_ENV === 'production') {
+    Sentry.withScope((scope) => {
+      scope.setLevel('warning');
+      if (request) {
+        scope.setExtra('url', request.url);
+        scope.setExtra('method', request.method);
+        scope.setExtra('headers', request.headers);
+        scope.setExtra('body', request.body);
+        scope.setExtra('query', request.query);
+        scope.setExtra('params', request.params);
+      }
+      Sentry.captureMessage(message);
+    });
+  }
+  logger.warn(message, { request });
 };
 
-export const logSecurity = (
-  event: string,
-  details: object,
-  level: 'warn' | 'error' = 'warn'
-): void => {
-  logger[level](`Security: ${event}`, details);
-};
-
-export const logDatabase = (
-  operation: string,
-  duration: number,
-  metadata?: object
-): void => {
-  logger.debug(`Database: ${operation} took ${duration}ms`, metadata);
-};
-
-export default logger;
+export { logger, stream, logError, logWarning };

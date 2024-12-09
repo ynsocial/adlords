@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { IUser } from './interfaces';
+import { IUser } from '../models/User';
 
 declare global {
   namespace Express {
@@ -7,20 +7,21 @@ declare global {
       user?: IUser;
       startTime?: number;
       requestId?: string;
-      body: any;
-      query: any;
-      params: any;
+      body: Record<string, any>;
+      query: Record<string, any>;
+      params: Record<string, any>;
       path: string;
       method: string;
       url: string;
       ip: string;
-      headers: any;
-      files?: any;
-      file?: any;
+      headers: Record<string, string | string[] | undefined>;
+      files?: Express.Multer.File[];
+      file?: Express.Multer.File;
       rateLimit?: {
         remaining: number;
         limit: number;
         reset: Date;
+        current: number;
       };
     }
   }

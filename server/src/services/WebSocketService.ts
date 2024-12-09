@@ -1,12 +1,16 @@
 import { Server } from 'socket.io';
 import { Server as HttpServer } from 'http';
-import logger from '../config/logger';
+import { logger } from '../config/logger';
 import { verifyToken } from '../utils/jwt';
-import { EventType } from '../types/enums';
+import { EventType, UserRole } from '../types/enums';
 
 interface SocketData {
   userId: string;
-  role: string;
+  role: UserRole;
+}
+
+interface WebSocketPayload {
+  [key: string]: any;
 }
 
 class WebSocketService {
@@ -43,11 +47,13 @@ class WebSocketService {
         const decoded = await verifyToken(token);
         socket.data = {
           userId: decoded.id,
-          role: decoded.role
+          role: decoded.role as UserRole
         };
         next();
       } catch (error) {
-        logger.error('WebSocket authentication error:', error);
+        if (error instanceof Error) {
+          logger.error('WebSocket authentication error:', error);
+        }
         next(new Error('Authentication failed'));
       }
     });
@@ -70,25 +76,29 @@ class WebSocketService {
     });
   }
 
-  public emitToUser(userId: string, event: EventType, data: any): void {
+  public emitToUser(userId: string, event: EventType, data: WebSocketPayload): void {
     try {
       this.io.to(userId).emit(event, data);
       logger.debug(`Emitted ${event} to user ${userId}`, { data });
     } catch (error) {
-      logger.error(`Error emitting ${event} to user ${userId}:`, error);
+      if (error instanceof Error) {
+        logger.error(`Error emitting ${event} to user ${userId}:`, error);
+      }
     }
   }
 
-  public emitToAll(event: EventType, data: any): void {
+  public emitToAll(event: EventType, data: WebSocketPayload): void {
     try {
       this.io.emit(event, data);
       logger.debug(`Emitted ${event} to all users`, { data });
     } catch (error) {
-      logger.error(`Error emitting ${event} to all users:`, error);
+      if (error instanceof Error) {
+        logger.error(`Error emitting ${event} to all users:`, error);
+      }
     }
   }
 
-  public emitToRole(role: string, event: EventType, data: any): void {
+  public emitToRole(role: UserRole, event: EventType, data: WebSocketPayload): void {
     try {
       const sockets = Array.from(this.io.sockets.sockets.values());
       const roleSpecificSockets = sockets.filter(
@@ -101,7 +111,9 @@ class WebSocketService {
 
       logger.debug(`Emitted ${event} to role ${role}`, { data });
     } catch (error) {
-      logger.error(`Error emitting ${event} to role ${role}:`, error);
+      if (error instanceof Error) {
+        logger.error(`Error emitting ${event} to role ${role}:`, error);
+      }
     }
   }
 }

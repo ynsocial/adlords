@@ -4,7 +4,7 @@ import handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
 import { EmailTemplate, EmailData } from '../types';
-import config from '../config';
+import { config } from '../config';
 
 class EmailService {
   private transporter: nodemailer.Transporter;
@@ -33,17 +33,7 @@ class EmailService {
 
   private loadTemplates() {
     const templateDir = path.join(__dirname, '../templates/email');
-    const templates: EmailTemplate[] = [
-      'company-registration',
-      'company-approval',
-      'company-rejection',
-      'job-posting-approval',
-      'job-posting-rejection',
-      'application-received',
-      'application-status-update',
-      'verification-code',
-      'password-reset',
-    ];
+    const templates = Object.values(EmailTemplate);
 
     templates.forEach((templateName) => {
       const templatePath = path.join(templateDir, `${templateName}.hbs`);
@@ -85,7 +75,7 @@ class EmailService {
 
   // Company Registration and Verification
   async sendVerificationCode(email: string, code: string) {
-    await this.sendEmail(email, 'Verify Your Account', 'verification-code', {
+    await this.sendEmail(email, 'Verify Your Account', EmailTemplate.VERIFICATION_CODE, {
       code,
       expiresIn: '15 minutes',
     });
@@ -95,7 +85,7 @@ class EmailService {
     await this.sendEmail(
       email,
       'Welcome to Travel Health Ambassador Platform',
-      'company-registration',
+      EmailTemplate.COMPANY_REGISTRATION,
       {
         companyName,
         loginUrl: `${config.clientUrl}/login`,
@@ -103,133 +93,104 @@ class EmailService {
     );
   }
 
-  async sendCompanyApproval(email: string, companyName: string, comment?: string) {
+  async sendCompanyApprovalNotification(email: string, companyName: string) {
     await this.sendEmail(
       email,
       'Your Company Registration Has Been Approved',
-      'company-approval',
+      EmailTemplate.COMPANY_APPROVAL,
       {
         companyName,
-        comment,
-        dashboardUrl: `${config.clientUrl}/company/dashboard`,
+        loginUrl: `${config.clientUrl}/login`,
       }
     );
   }
 
-  async sendCompanyRejection(email: string, companyName: string, comment?: string) {
+  async sendCompanyRejectionNotification(email: string, companyName: string, reason: string) {
     await this.sendEmail(
       email,
       'Your Company Registration Status',
-      'company-rejection',
+      EmailTemplate.COMPANY_REJECTION,
       {
         companyName,
-        comment,
+        reason,
         supportEmail: config.email.supportAddress,
       }
     );
   }
 
   // Job Posting Notifications
-  async sendJobPostingApproval(
-    email: string,
-    companyName: string,
-    jobTitle: string,
-    comment?: string
-  ) {
+  async sendJobPostingApprovalNotification(email: string, jobTitle: string) {
     await this.sendEmail(
       email,
       'Your Job Posting Has Been Approved',
-      'job-posting-approval',
+      EmailTemplate.JOB_POSTING_APPROVAL,
       {
-        companyName,
         jobTitle,
-        comment,
-        jobUrl: `${config.clientUrl}/jobs/${jobTitle}`,
+        jobsUrl: `${config.clientUrl}/jobs`,
       }
     );
   }
 
-  async sendJobPostingRejection(
+  async sendJobPostingRejectionNotification(
     email: string,
-    companyName: string,
     jobTitle: string,
-    comment?: string
+    reason: string
   ) {
     await this.sendEmail(
       email,
-      'Your Job Posting Requires Updates',
-      'job-posting-rejection',
+      'Your Job Posting Status',
+      EmailTemplate.JOB_POSTING_REJECTION,
       {
-        companyName,
         jobTitle,
-        comment,
-        editUrl: `${config.clientUrl}/company/jobs/edit`,
+        reason,
+        supportEmail: config.email.supportAddress,
       }
     );
   }
 
   // Application Notifications
-  async sendApplicationReceived(
-    companyEmail: string,
-    applicantName: string,
-    jobTitle: string
+  async sendApplicationReceivedNotification(
+    email: string,
+    jobTitle: string,
+    companyName: string
   ) {
     await this.sendEmail(
-      companyEmail,
-      'New Application Received',
-      'application-received',
+      email,
+      'Application Received',
+      EmailTemplate.APPLICATION_RECEIVED,
       {
-        applicantName,
         jobTitle,
-        applicationUrl: `${config.clientUrl}/company/applications`,
+        companyName,
+        applicationsUrl: `${config.clientUrl}/applications`,
       }
     );
   }
 
-  async sendApplicationStatusUpdate(
-    applicantEmail: string,
+  async sendApplicationStatusUpdateNotification(
+    email: string,
     jobTitle: string,
     status: string,
-    comment?: string
+    message?: string
   ) {
     await this.sendEmail(
-      applicantEmail,
-      'Your Application Status Has Been Updated',
-      'application-status-update',
+      email,
+      'Application Status Update',
+      EmailTemplate.APPLICATION_STATUS_UPDATE,
       {
         jobTitle,
         status,
-        comment,
-        dashboardUrl: `${config.clientUrl}/dashboard`,
+        message,
+        applicationsUrl: `${config.clientUrl}/applications`,
       }
     );
   }
 
   // Password Reset
-  async sendPasswordResetLink(email: string, resetToken: string) {
-    await this.sendEmail(email, 'Reset Your Password', 'password-reset', {
+  async sendPasswordResetEmail(email: string, resetToken: string) {
+    await this.sendEmail(email, 'Reset Your Password', EmailTemplate.PASSWORD_RESET, {
       resetUrl: `${config.clientUrl}/reset-password?token=${resetToken}`,
       expiresIn: '1 hour',
     });
-  }
-
-  // Bulk Emails
-  async sendBulkEmails(
-    recipients: { email: string; data: EmailData }[],
-    template: EmailTemplate,
-    subject: string
-  ) {
-    const promises = recipients.map((recipient) =>
-      this.sendEmail(recipient.email, subject, template, recipient.data)
-    );
-
-    try {
-      await Promise.all(promises);
-      console.log(`Bulk emails sent successfully to ${recipients.length} recipients`);
-    } catch (error) {
-      console.error('Failed to send bulk emails:', error);
-      throw error;
-    }
   }
 }
 
