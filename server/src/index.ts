@@ -8,7 +8,8 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import { createClient } from 'redis';
 import authRoutes from './routes/auth.routes';
-import { logger } from './config/logger';
+import { logger, stream, errorHandler, Sentry } from './config/logger';
+import config from './config/config';
 
 dotenv.config();
 
@@ -20,6 +21,9 @@ const io = new Server(httpServer, {
     methods: ['GET', 'POST']
   }
 });
+
+// Initialize Sentry request handler
+app.use(Sentry.Handlers.requestHandler());
 
 // Redis Client Setup
 const redisClient = createClient({
@@ -34,12 +38,14 @@ mongoose.connect(process.env.MONGODB_URI!)
   .then(() => logger.info('MongoDB Connected'))
   .catch(err => logger.error('MongoDB Connection Error:', err));
 
-// Middleware
-app.use(helmet());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173'
-}));
+// Basic middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true,
+}));
+app.use(helmet());
 
 // Rate limiting
 const limiter = rateLimit({
@@ -48,7 +54,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Health Check Endpoint
+// Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
     const healthcheck = {
@@ -72,14 +78,11 @@ app.get('/api/health', async (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 
-// Global Error Handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  logger.error(err.stack);
-  res.status(500).json({
-    status: 'error',
-    message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
-  });
-});
+// Sentry error handler
+app.use(Sentry.Handlers.errorHandler());
+
+// Global error handler
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 8000;
 httpServer.listen(PORT, () => {

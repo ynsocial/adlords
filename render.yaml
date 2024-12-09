@@ -2,15 +2,17 @@ services:
   - type: web
     name: travel-health-api
     env: node
+    region: frankfurt
+    plan: starter
     rootDir: server
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
+    buildCommand: cd server && npm install && npm run build
+    startCommand: cd server && npm start
     envVars:
       # Server Configuration
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 8000
+        value: 8080
       - key: LOG_LEVEL
         value: info
 
@@ -26,7 +28,7 @@ services:
 
       # CORS and Security
       - key: CORS_ORIGIN
-        value: https://adlords.netlify.app
+        value: https://travel-health.netlify.app
       - key: RATE_LIMIT_WINDOW_MS
         value: 900000
       - key: RATE_LIMIT_MAX
@@ -34,16 +36,25 @@ services:
 
       # Redis Configuration
       - key: REDIS_URL
-        fromService:
-          type: redis
-          name: travel-health-cache
-          property: connectionString
+        sync: false
 
       # Error Tracking
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT
         value: production
+
+      # Email Configuration
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
 
     healthCheckPath: /api/health
     autoDeploy: true

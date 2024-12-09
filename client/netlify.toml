@@ -1,19 +1,27 @@
 [build]
   base = "client"
-  publish = "dist"
   command = "npm run build"
+  publish = "dist"
 
 [build.environment]
   NODE_VERSION = "18"
   VITE_API_URL = "https://travel-health-api.onrender.com"
-  VITE_SOCKET_URL = "wss://travel-health-api.onrender.com"
-  VITE_APP_NAME = "Adlords Travel Health"
-  VITE_APP_VERSION = "1.0.0"
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-[functions]
-  directory = "netlify/functions"
+[dev]
+  command = "npm run dev"
+  port = 3000
+  targetPort = 8080
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://travel-health-api.onrender.com; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
