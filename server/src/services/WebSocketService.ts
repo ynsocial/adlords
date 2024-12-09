@@ -1,177 +1,144 @@
-import { Server as SocketServer } from 'socket.io';
-import { Server } from 'http';
-import { verifyToken } from '../utils/jwt';
-import Logger from '../utils/logger';
-import { redisClient } from '../config/redis';
+import { Server, Socket } from 'socket.io';
+import { RedisClientType } from 'redis';
+import { logger } from '../config/logger';
+import { IUser } from '../types';
+
+export const EVENTS = {
+  JOB_UPDATED: 'job:updated',
+  JOB_CREATED: 'job:created',
+  JOB_DELETED: 'job:deleted',
+  APPLICATION_UPDATED: 'application:updated',
+  APPLICATION_CREATED: 'application:created',
+  NOTIFICATION: 'notification'
+} as const;
+
+type EventType = typeof EVENTS[keyof typeof EVENTS];
 
 export class WebSocketService {
-  private static io: SocketServer;
-  private static readonly SOCKET_EVENTS = {
-    JOB_UPDATED: 'job:updated',
-    JOB_CREATED: 'job:created',
-    JOB_DELETED: 'job:deleted',
-    APPLICATION_UPDATED: 'application:updated',
-    APPLICATION_CREATED: 'application:created',
-    NOTIFICATION: 'notification',
-  };
+  private io: Server;
+  private redisClient: RedisClientType;
+  private static instance: WebSocketService;
+  private readonly maxNotifications = 100;
 
-  static initialize(server: Server): void {
-    this.io = new SocketServer(server, {
-      cors: {
-        origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-        methods: ['GET', 'POST'],
-        credentials: true,
-      },
-    });
-
-    // Authentication middleware
-    this.io.use(async (socket, next) => {
-      try {
-        const token = socket.handshake.auth.token;
-        if (!token) {
-          return next(new Error('Authentication error'));
-        }
-
-        const decoded = await verifyToken(token);
-        socket.data.user = decoded;
-        next();
-      } catch (error) {
-        next(new Error('Authentication error'));
-      }
-    });
-
-    // Connection handler
-    this.io.on('connection', (socket) => {
-      const userId = socket.data.user.id;
-      const userRole = socket.data.user.role;
-
-      Logger.info(`User connected: ${userId} (${userRole})`);
-
-      // Join user-specific room
-      socket.join(`user:${userId}`);
-
-      // Join role-specific room
-      socket.join(`role:${userRole}`);
-
-      // Handle disconnection
-      socket.on('disconnect', () => {
-        Logger.info(`User disconnected: ${userId}`);
-      });
-
-      // Error handling
-      socket.on('error', (error) => {
-        Logger.error(`Socket error for user ${userId}: ${error.message}`);
-      });
-    });
-
-    Logger.info('WebSocket server initialized');
+  private constructor(io: Server, redisClient: RedisClientType) {
+    this.io = io;
+    this.redisClient = redisClient;
+    this.setupSocketHandlers();
   }
 
-  // Notify about job updates
-  static async notifyJobUpdate(jobId: string, action: 'update' | 'create' | 'delete', data: any): Promise<void> {
-    try {
-      const event = this.SOCKET_EVENTS[`JOB_${action.toUpperCase()}`];
-      
-      // Get job's company ID
-      const companyId = data.companyId;
-
-      // Emit to relevant rooms
-      this.io.to(`role:admin`).emit(event, { jobId, data });
-      this.io.to(`company:${companyId}`).emit(event, { jobId, data });
-
-      if (action !== 'delete' && data.status === 'Active') {
-        this.io.to('role:ambassador').emit(event, { jobId, data });
+  public static getInstance(io?: Server, redisClient?: RedisClientType): WebSocketService {
+    if (!WebSocketService.instance) {
+      if (!io || !redisClient) {
+        throw new Error('WebSocketService must be initialized with io and redisClient');
       }
+      WebSocketService.instance = new WebSocketService(io, redisClient);
+    }
+    return WebSocketService.instance;
+  }
 
-      Logger.info(`Job ${action} notification sent for job ${jobId}`);
+  private setupSocketHandlers(): void {
+    this.io.on('connection', (socket: Socket) => {
+      logger.info('Client connected to WebSocket');
+
+      socket.on('authenticate', async (token: string) => {
+        try {
+          // Implement your authentication logic here
+          const user: IUser = {} as IUser; // Replace with actual user authentication
+          socket.data.user = user;
+          await this.joinUserRooms(socket, user);
+          await this.sendPendingNotifications(socket, user._id.toString());
+        } catch (error) {
+          logger.error('Authentication error:', error);
+          socket.disconnect();
+        }
+      });
+
+      socket.on('disconnect', () => {
+        logger.info('Client disconnected from WebSocket');
+      });
+    });
+  }
+
+  private async joinUserRooms(socket: Socket, user: IUser): Promise<void> {
+    const rooms = [`user:${user._id}`];
+    if (user.role === 'company') {
+      rooms.push(`company:${user._id}`);
+    }
+    await Promise.all(rooms.map(room => socket.join(room)));
+  }
+
+  public async emitJobEvent(type: keyof typeof EVENTS, jobId: string, data: any): Promise<void> {
+    try {
+      if (!type.startsWith('JOB_')) {
+        throw new Error('Invalid job event type');
+      }
+      const event = EVENTS[type];
+      this.io.to(`job:${jobId}`).emit(event, data);
     } catch (error) {
-      Logger.error(`Error sending job ${action} notification: ${error.message}`);
+      logger.error(`Error emitting job event: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Notify about application updates
-  static async notifyApplicationUpdate(
+  public async emitApplicationEvent(
+    type: keyof typeof EVENTS,
     applicationId: string,
-    action: 'update' | 'create',
+    jobId: string,
     data: any
   ): Promise<void> {
     try {
-      const event = this.SOCKET_EVENTS[`APPLICATION_${action.toUpperCase()}`];
-      
-      // Get relevant IDs
-      const { ambassadorId, jobId } = data;
-      const companyId = data.job?.companyId;
-
-      // Emit to relevant users/rooms
-      this.io.to(`user:${ambassadorId}`).emit(event, { applicationId, data });
-      
-      if (companyId) {
-        this.io.to(`company:${companyId}`).emit(event, { applicationId, data });
+      if (!type.startsWith('APPLICATION_')) {
+        throw new Error('Invalid application event type');
       }
-
-      this.io.to('role:admin').emit(event, { applicationId, data });
-
-      Logger.info(`Application ${action} notification sent for application ${applicationId}`);
+      const event = EVENTS[type];
+      this.io.to(`application:${applicationId}`).emit(event, data);
     } catch (error) {
-      Logger.error(`Error sending application ${action} notification: ${error.message}`);
+      logger.error(`Error emitting application event: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Send personal notification
-  static async sendNotification(userId: string, notification: {
-    type: string;
-    message: string;
-    data?: any;
-  }): Promise<void> {
+  public async sendNotification(userId: string, notification: any): Promise<void> {
     try {
-      this.io.to(`user:${userId}`).emit(this.SOCKET_EVENTS.NOTIFICATION, notification);
-
-      // Store notification in Redis for offline users
-      const userNotifications = `notifications:${userId}`;
-      await redisClient.lpush(userNotifications, JSON.stringify({
-        ...notification,
-        timestamp: new Date().toISOString(),
-      }));
-      await redisClient.ltrim(userNotifications, 0, 99); // Keep last 100 notifications
-
-      Logger.info(`Notification sent to user ${userId}`);
+      const notificationKey = `notifications:${userId}`;
+      
+      // Store notification in Redis
+      await this.redisClient.lPush(notificationKey, JSON.stringify(notification));
+      
+      // Trim the list to keep only the latest notifications
+      await this.redisClient.lTrim(notificationKey, 0, this.maxNotifications - 1);
+      
+      // Emit the notification to connected clients
+      this.io.to(`user:${userId}`).emit(EVENTS.NOTIFICATION, notification);
     } catch (error) {
-      Logger.error(`Error sending notification: ${error.message}`);
+      logger.error(`Error sending notification: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Send broadcast notification to a role
-  static async broadcastToRole(role: string, notification: {
-    type: string;
-    message: string;
-    data?: any;
-  }): Promise<void> {
+  public async markNotificationAsRead(userId: string, notificationId: string): Promise<void> {
     try {
-      this.io.to(`role:${role}`).emit(this.SOCKET_EVENTS.NOTIFICATION, notification);
-      Logger.info(`Broadcast notification sent to role ${role}`);
+      // Implement notification read status update logic
+      logger.info(`Marking notification ${notificationId} as read for user ${userId}`);
     } catch (error) {
-      Logger.error(`Error broadcasting notification: ${error.message}`);
+      logger.error(`Error marking notification as read: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Get user's offline notifications
-  static async getOfflineNotifications(userId: string): Promise<any[]> {
+  private async sendPendingNotifications(socket: Socket, userId: string): Promise<void> {
     try {
-      const userNotifications = `notifications:${userId}`;
-      const notifications = await redisClient.lrange(userNotifications, 0, -1);
-      return notifications.map(n => JSON.parse(n));
+      const notificationKey = `notifications:${userId}`;
+      const notifications = await this.redisClient.lRange(notificationKey, 0, -1);
+      const parsedNotifications = notifications.map(n => JSON.parse(n));
+      socket.emit('pending_notifications', parsedNotifications);
     } catch (error) {
-      Logger.error(`Error getting offline notifications: ${error.message}`);
-      return [];
+      logger.error(`Error sending pending notifications: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Clear user's offline notifications
-  static async clearOfflineNotifications(userId: string): Promise<void> {
+  public async clearNotifications(userId: string): Promise<void> {
     try {
-      await redisClient.del(`notifications:${userId}`);
+      const notificationKey = `notifications:${userId}`;
+      await this.redisClient.del(notificationKey);
     } catch (error) {
-      Logger.error(`Error clearing offline notifications: ${error.message}`);
+      logger.error(`Error clearing notifications: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }

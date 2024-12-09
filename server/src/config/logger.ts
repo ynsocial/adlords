@@ -3,7 +3,7 @@ import 'winston-daily-rotate-file';
 import * as Sentry from '@sentry/node';
 import path from 'path';
 import { Request } from 'express';
-import { TransportStream } from 'winston-transport';
+import Transport from 'winston-transport';
 
 // Initialize Sentry
 if (process.env.NODE_ENV === 'production') {
@@ -64,8 +64,8 @@ const consoleFormat = combine(
 // Define log directory
 const logDir = path.join(process.cwd(), 'logs');
 
-class SentryTransport extends TransportStream {
-  constructor(opts?: any) {
+class SentryTransport extends Transport {
+  constructor(opts?: Transport.TransportStreamOptions) {
     super(opts);
   }
 
@@ -73,14 +73,12 @@ class SentryTransport extends TransportStream {
     const { level, message, ...meta } = info;
     
     if (level === 'error') {
-      Sentry.captureEvent({
-        message,
+      Sentry.captureMessage(message, {
         level: Sentry.Severity.Error,
         extra: meta
       });
     } else if (level === 'warn') {
-      Sentry.captureEvent({
-        message,
+      Sentry.captureMessage(message, {
         level: Sentry.Severity.Warning,
         extra: meta
       });
