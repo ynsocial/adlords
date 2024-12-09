@@ -1,0 +1,128 @@
+import { Server, Socket } from 'socket.io';
+import { redisClient } from '../config/redis';
+import { logger } from '../config/logger';
+
+class WebSocketService {
+  private io: Server;
+  private static instance: WebSocketService;
+
+  private constructor(server: any) {
+    this.io = new Server(server, {
+      cors: {
+        origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+        methods: ['GET', 'POST'],
+        credentials: true
+      }
+    });
+
+    this.setupSocketHandlers();
+  }
+
+  public static getInstance(server?: any): WebSocketService {
+    if (!WebSocketService.instance && server) {
+      WebSocketService.instance = new WebSocketService(server);
+    }
+    return WebSocketService.instance;
+  }
+
+  private setupSocketHandlers(): void {
+    this.io.on('connection', (socket: Socket) => {
+      logger.info(`Client connected: ${socket.id}`);
+
+      // Handle joining rooms (e.g., for specific users or companies)
+      socket.on('join', (rooms: string[]) => {
+        rooms.forEach(room => {
+          socket.join(room);
+          logger.info(`Socket ${socket.id} joined room: ${room}`);
+        });
+      });
+
+      // Handle leaving rooms
+      socket.on('leave', (rooms: string[]) => {
+        rooms.forEach(room => {
+          socket.leave(room);
+          logger.info(`Socket ${socket.id} left room: ${room}`);
+        });
+      });
+
+      // Handle chat messages
+      socket.on('chat:message', async (data: any) => {
+        try {
+          const { room, message } = data;
+          
+          // Store message in Redis
+          await this.storeMessage(room, message);
+          
+          // Broadcast to room
+          this.io.to(room).emit('chat:message', message);
+          
+          logger.info(`Message sent to room ${room}`);
+        } catch (error: any) {
+          logger.error('Error handling chat message:', error);
+          socket.emit('error', { message: error.message });
+        }
+      });
+
+      // Handle typing indicators
+      socket.on('typing:start', (room: string) => {
+        socket.to(room).emit('typing:start', socket.id);
+      });
+
+      socket.on('typing:stop', (room: string) => {
+        socket.to(room).emit('typing:stop', socket.id);
+      });
+
+      // Handle disconnection
+      socket.on('disconnect', () => {
+        logger.info(`Client disconnected: ${socket.id}`);
+      });
+
+      // Handle errors
+      socket.on('error', (error: any) => {
+        logger.error(`Socket error for ${socket.id}:`, error);
+      });
+    });
+  }
+
+  private async storeMessage(room: string, message: any): Promise<void> {
+    try {
+      const key = `chat:${room}:messages`;
+      
+      // Store message in Redis list
+      await redisClient.lPush(key, JSON.stringify({
+        ...message,
+        timestamp: new Date().toISOString()
+      }));
+
+      // Keep only last 100 messages
+      await redisClient.lTrim(key, 0, 99);
+      
+      logger.info(`Message stored for room ${room}`);
+    } catch (error: any) {
+      logger.error('Error storing message:', error);
+      throw new Error(`Failed to store message: ${error.message}`);
+    }
+  }
+
+  public async getMessages(room: string, limit: number = 50): Promise<any[]> {
+    try {
+      const key = `chat:${room}:messages`;
+      const messages = await redisClient.lRange(key, 0, limit - 1);
+      
+      return messages.map(msg => JSON.parse(msg));
+    } catch (error: any) {
+      logger.error('Error retrieving messages:', error);
+      throw new Error(`Failed to retrieve messages: ${error.message}`);
+    }
+  }
+
+  public broadcastToRoom(room: string, event: string, data: any): void {
+    this.io.to(room).emit(event, data);
+  }
+
+  public broadcastToAll(event: string, data: any): void {
+    this.io.emit(event, data);
+  }
+}
+
+export default WebSocketService;

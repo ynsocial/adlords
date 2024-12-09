@@ -1,0 +1,89 @@
+import winston from 'winston';
+import 'winston-daily-rotate-file';
+import * as Sentry from '@sentry/node';
+import Transport from 'winston-transport';
+
+class SentryTransport extends Transport {
+  constructor(opts?: Transport.TransportStreamOptions) {
+    super(opts);
+  }
+
+  log(info: any, callback: () => void) {
+    const { level, message, ...meta } = info;
+
+    // Map Winston levels to Sentry levels
+    const levelMap: { [key: string]: Sentry.SeverityLevel } = {
+      error: 'error',
+      warn: 'warning',
+      info: 'info',
+      verbose: 'info',
+      debug: 'debug',
+      silly: 'debug'
+    };
+
+    Sentry.captureMessage(message, {
+      level: levelMap[level] || 'info',
+      extra: meta
+    });
+
+    callback();
+  }
+}
+
+// Create the logger instance
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'travel-health-api' },
+  transports: [
+    // Console transport for development
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    }),
+
+    // File transport for production
+    new winston.transports.DailyRotateFile({
+      filename: 'logs/error-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '20m',
+      maxFiles: '14d',
+      level: 'error'
+    }),
+
+    new winston.transports.DailyRotateFile({
+      filename: 'logs/combined-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '20m',
+      maxFiles: '14d'
+    })
+  ]
+});
+
+// Add Sentry transport in production
+if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    tracesSampleRate: 1.0
+  });
+
+  logger.add(new SentryTransport());
+}
+
+// Create a stream object for Morgan middleware
+const stream = {
+  write: (message: string) => {
+    logger.info(message.trim());
+  }
+};
+
+export { logger, stream };

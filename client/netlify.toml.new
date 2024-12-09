@@ -1,0 +1,53 @@
+[build]
+  base = "client"
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_FLAGS = "--no-audit --no-fund"
+  VITE_API_URL = "https://adlords.onrender.com"
+  VITE_SOCKET_URL = "https://adlords.onrender.com"
+  VITE_APP_NAME = "Travel Health Ambassador Platform"
+  VITE_APP_VERSION = "1.0.0"
+  VITE_ENABLE_SOCKET = "true"
+  VITE_ENABLE_NOTIFICATIONS = "true"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self' https: wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https: wss:;"
+
+[dev]
+  framework = "vite"
+  targetPort = 5173
+  port = 8888
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+
+# Production context
+[context.production]
+  environment = { NODE_ENV = "production" }
+
+# Deploy Preview context
+[context.deploy-preview]
+  environment = { NODE_ENV = "production" }
+
+# Branch Deploy context
+[context.branch-deploy]
+  environment = { NODE_ENV = "production" }
+
+# Specific branch context
+[context.develop]
+  environment = { NODE_ENV = "development" }

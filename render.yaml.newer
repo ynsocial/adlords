@@ -1,0 +1,81 @@
+services:
+  - type: web
+    name: travel-health-api
+    env: node
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      # Server Configuration
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8000
+      - key: LOG_LEVEL
+        value: info
+
+      # Database Configuration
+      - key: MONGODB_URI
+        value: mongodb+srv://ynsocial:Graf2021@cluster0.wb86x.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+
+      # Authentication
+      - key: JWT_SECRET
+        value: adlords-jwt-secret-2024
+      - key: JWT_EXPIRY
+        value: 24h
+
+      # CORS and Security
+      - key: CORS_ORIGIN
+        value: https://adlords.netlify.app
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX
+        value: 100
+
+      # Redis Configuration
+      - key: REDIS_URL
+        sync: false # This will be automatically set by the Redis service
+
+      # Email Configuration (AWS SES)
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
+      - key: EMAIL_FROM
+        value: no-reply@adlords.com
+
+      # Error Tracking
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+
+      # File Upload (AWS S3)
+      - key: AWS_S3_BUCKET
+        sync: false
+
+    healthCheckPath: /api/health
+    autoDeploy: true
+
+  - type: redis
+    name: travel-health-cache
+    ipAllowList: []
+    plan: free
+    maxmemoryPolicy: noeviction
+    
+  # Optional: Add a worker service for background jobs
+  - type: worker
+    name: travel-health-worker
+    env: node
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm run worker
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        value: mongodb+srv://ynsocial:Graf2021@cluster0.wb86x.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+      - key: REDIS_URL
+        sync: false
