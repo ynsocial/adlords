@@ -9,6 +9,7 @@ import {
   updateProfile,
   verifyEmail,
   resendVerification,
+  changePassword
 } from '../controllers/auth.controller';
 import { protect } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validate';
@@ -39,6 +40,14 @@ const forgotPasswordValidation = [
 
 const resetPasswordValidation = [
   body('token').notEmpty().withMessage('Reset token is required'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters'),
+];
+
+// Change password validation
+const changePasswordValidation = [
+  body('oldPassword').notEmpty().withMessage('Old password is required'),
   body('newPassword')
     .isLength({ min: 8 })
     .withMessage('Password must be at least 8 characters'),
@@ -82,5 +91,12 @@ router.post(
 // Protected routes
 router.get('/profile', protect, getProfile);
 router.put('/profile', protect, updateProfileValidation, validateRequest, updateProfile);
+router.post(
+  '/change-password',
+  protect,
+  changePasswordValidation,
+  validateRequest,
+  changePassword
+);
 
 export default router;

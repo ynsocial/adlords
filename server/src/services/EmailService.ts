@@ -1,63 +1,71 @@
 import nodemailer from 'nodemailer';
-import config from '../config/config';
-import { logger } from '../config/logger';
+import { logError, logInfo } from '../config/logger';
 
-class EmailService {
+export class EmailService {
   private transporter: nodemailer.Transporter;
 
   constructor() {
     this.transporter = nodemailer.createTransport({
-      host: config.email.host,
-      port: config.email.port,
-      secure: config.email.port === 465,
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_PORT === '465',
       auth: {
-        user: config.email.user,
-        pass: config.email.password,
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
       },
     });
   }
 
-  async sendPasswordResetEmail(
-    to: string,
-    resetToken: string,
-    firstName: string
-  ): Promise<void> {
-    const resetUrl = `${config.clientUrl}/reset-password/${resetToken}`;
-
-    const mailOptions = {
-      from: `"Travel Health" <${config.email.from}>`,
-      to,
-      subject: 'Password Reset Request',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2>Hello ${firstName},</h2>
-          <p>You recently requested to reset your password for your Travel Health account.</p>
-          <p>Click the button below to reset your password. This link is valid for 1 hour.</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetUrl}" 
-               style="background-color: #4CAF50; color: white; padding: 12px 24px; 
-                      text-decoration: none; border-radius: 4px; display: inline-block;">
-              Reset Password
-            </a>
-          </div>
-          <p>If you didn't request this password reset, please ignore this email or contact support if you have concerns.</p>
-          <p>Best regards,<br>Travel Health Team</p>
-          <hr style="border: 1px solid #eee; margin: 20px 0;">
-          <p style="color: #666; font-size: 12px;">
-            If the button doesn't work, copy and paste this link into your browser:<br>
-            ${resetUrl}
-          </p>
-        </div>
-      `,
-    };
-
+  private async sendEmail(to: string, subject: string, html: string) {
     try {
-      await this.transporter.sendMail(mailOptions);
-      logger.info(`Password reset email sent to ${to}`);
+      const info = await this.transporter.sendMail({
+        from: process.env.EMAIL_FROM,
+        to,
+        subject,
+        html,
+      });
+      logInfo('Email sent successfully', { messageId: info.messageId, to });
+      return true;
     } catch (error) {
-      logger.error('Error sending password reset email:', error);
-      throw new Error('Failed to send password reset email');
+      logError(error as Error, { context: 'EmailService.sendEmail', to });
+      return false;
     }
+  }
+
+  async sendPasswordResetEmail(to: string, resetToken: string) {
+    const resetLink = `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`;
+    const html = `
+      <h1>Password Reset Request</h1>
+      <p>You have requested to reset your password. Click the link below to proceed:</p>
+      <a href="${resetLink}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Reset Password</a>
+      <p>If you didn't request this, please ignore this email.</p>
+      <p>This link will expire in 1 hour.</p>
+      <p>Best regards,<br>Travel Health Team</p>
+    `;
+    return this.sendEmail(to, 'Password Reset Request', html);
+  }
+
+  async sendPasswordResetConfirmation(to: string) {
+    const html = `
+      <h1>Password Reset Successful</h1>
+      <p>Your password has been successfully reset.</p>
+      <p>If you did not perform this action, please contact our support team immediately.</p>
+      <p>Best regards,<br>Travel Health Team</p>
+    `;
+    return this.sendEmail(to, 'Password Reset Successful', html);
+  }
+
+  async sendVerificationEmail(to: string, verificationToken: string) {
+    const verificationLink = `${process.env.CLIENT_URL}/verify-email?token=${verificationToken}`;
+    const html = `
+      <h1>Verify Your Email</h1>
+      <p>Thank you for registering with Travel Health. Please click the link below to verify your email address:</p>
+      <a href="${verificationLink}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Verify Email</a>
+      <p>If you didn't create an account, please ignore this email.</p>
+      <p>This link will expire in 24 hours.</p>
+      <p>Best regards,<br>Travel Health Team</p>
+    `;
+    return this.sendEmail(to, 'Verify Your Email', html);
   }
 
   async sendPasswordChangeConfirmation(
@@ -65,7 +73,7 @@ class EmailService {
     firstName: string
   ): Promise<void> {
     const mailOptions = {
-      from: `"Travel Health" <${config.email.from}>`,
+      from: `"Travel Health" <${process.env.EMAIL_FROM}>`,
       to,
       subject: 'Password Changed Successfully',
       html: `
@@ -80,53 +88,10 @@ class EmailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      logger.info(`Password change confirmation email sent to ${to}`);
+      logInfo(`Password change confirmation email sent to ${to}`);
     } catch (error) {
-      logger.error('Error sending password change confirmation email:', error);
+      logError('Error sending password change confirmation email:', error);
       throw new Error('Failed to send password change confirmation email');
-    }
-  }
-
-  async sendVerificationEmail(
-    to: string,
-    verificationToken: string,
-    firstName: string
-  ): Promise<void> {
-    const verifyUrl = `${config.clientUrl}/verify-email/${verificationToken}`;
-
-    const mailOptions = {
-      from: `"Travel Health" <${config.email.from}>`,
-      to,
-      subject: 'Verify Your Email Address',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2>Welcome to Travel Health, ${firstName}!</h2>
-          <p>Thank you for registering. Please verify your email address to complete your registration.</p>
-          <p>This link will expire in 24 hours.</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${verifyUrl}" 
-               style="background-color: #4CAF50; color: white; padding: 12px 24px; 
-                      text-decoration: none; border-radius: 4px; display: inline-block;">
-              Verify Email Address
-            </a>
-          </div>
-          <p>If you didn't create an account with us, please ignore this email.</p>
-          <p>Best regards,<br>Travel Health Team</p>
-          <hr style="border: 1px solid #eee; margin: 20px 0;">
-          <p style="color: #666; font-size: 12px;">
-            If the button doesn't work, copy and paste this link into your browser:<br>
-            ${verifyUrl}
-          </p>
-        </div>
-      `,
-    };
-
-    try {
-      await this.transporter.sendMail(mailOptions);
-      logger.info(`Verification email sent to ${to}`);
-    } catch (error) {
-      logger.error('Error sending verification email:', error);
-      throw new Error('Failed to send verification email');
     }
   }
 
@@ -135,7 +100,7 @@ class EmailService {
     firstName: string
   ): Promise<void> {
     const mailOptions = {
-      from: `"Travel Health" <${config.email.from}>`,
+      from: `"Travel Health" <${process.env.EMAIL_FROM}>`,
       to,
       subject: 'Email Verification Successful',
       html: `
@@ -144,7 +109,7 @@ class EmailService {
           <p>Your email has been successfully verified!</p>
           <p>You can now access all features of Travel Health.</p>
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${config.clientUrl}/login" 
+            <a href="${process.env.CLIENT_URL}/login" 
                style="background-color: #4CAF50; color: white; padding: 12px 24px; 
                       text-decoration: none; border-radius: 4px; display: inline-block;">
               Login to Your Account
@@ -157,9 +122,9 @@ class EmailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      logger.info(`Verification success email sent to ${to}`);
+      logInfo(`Verification success email sent to ${to}`);
     } catch (error) {
-      logger.error('Error sending verification success email:', error);
+      logError('Error sending verification success email:', error);
       throw new Error('Failed to send verification success email');
     }
   }
@@ -191,7 +156,7 @@ class EmailService {
     };
 
     const mailOptions = {
-      from: `"Travel Health" <${config.email.from}>`,
+      from: `"Travel Health" <${process.env.EMAIL_FROM}>`,
       to,
       subject: `${statusMessages[status]} - ${jobTitle}`,
       html: `
@@ -200,7 +165,7 @@ class EmailService {
           <p>Re: Your application for <strong>${jobTitle}</strong></p>
           <p>${statusDetails[status]}</p>
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${config.clientUrl}/applications" 
+            <a href="${process.env.CLIENT_URL}/applications" 
                style="background-color: #4CAF50; color: white; padding: 12px 24px; 
                       text-decoration: none; border-radius: 4px; display: inline-block;">
               View Application Status
@@ -213,9 +178,9 @@ class EmailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      logger.info(`Application status email sent to ${to} - Status: ${status}`);
+      logInfo(`Application status email sent to ${to} - Status: ${status}`);
     } catch (error) {
-      logger.error('Error sending application status email:', error);
+      logError('Error sending application status email:', error);
       throw new Error('Failed to send application status email');
     }
   }
@@ -239,7 +204,7 @@ class EmailService {
       : '';
 
     const mailOptions = {
-      from: `"Travel Health" <${config.email.from}>`,
+      from: `"Travel Health" <${process.env.EMAIL_FROM}>`,
       to,
       subject: `Interview Scheduled - ${jobTitle}`,
       html: `
@@ -260,7 +225,7 @@ class EmailService {
           </ul>
           <p>If you need to reschedule or have any questions, please contact us as soon as possible.</p>
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${config.clientUrl}/applications" 
+            <a href="${process.env.CLIENT_URL}/applications" 
                style="background-color: #4CAF50; color: white; padding: 12px 24px; 
                       text-decoration: none; border-radius: 4px; display: inline-block;">
               View Interview Details
@@ -273,9 +238,9 @@ class EmailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      logger.info(`Interview schedule email sent to ${to}`);
+      logInfo(`Interview schedule email sent to ${to}`);
     } catch (error) {
-      logger.error('Error sending interview schedule email:', error);
+      logError('Error sending interview schedule email:', error);
       throw new Error('Failed to send interview schedule email');
     }
   }
@@ -299,7 +264,7 @@ class EmailService {
       : '';
 
     const mailOptions = {
-      from: `"Travel Health" <${config.email.from}>`,
+      from: `"Travel Health" <${process.env.EMAIL_FROM}>`,
       to,
       subject: `Interview Reminder - ${jobTitle}`,
       html: `
@@ -319,7 +284,7 @@ class EmailService {
             <li>Arrive 10 minutes early</li>
           </ul>
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${config.clientUrl}/applications" 
+            <a href="${process.env.CLIENT_URL}/applications" 
                style="background-color: #4CAF50; color: white; padding: 12px 24px; 
                       text-decoration: none; border-radius: 4px; display: inline-block;">
               View Interview Details
@@ -332,12 +297,20 @@ class EmailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      logger.info(`Interview reminder email sent to ${to}`);
+      logInfo(`Interview reminder email sent to ${to}`);
     } catch (error) {
-      logger.error('Error sending interview reminder email:', error);
+      logError('Error sending interview reminder email:', error);
       throw new Error('Failed to send interview reminder email');
     }
   }
 }
 
-export const emailService = new EmailService();
+// Create singleton instance
+let instance: EmailService | null = null;
+
+export const getEmailService = (): EmailService => {
+  if (!instance) {
+    instance = new EmailService();
+  }
+  return instance;
+};
